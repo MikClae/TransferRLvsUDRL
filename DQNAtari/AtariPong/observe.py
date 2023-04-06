@@ -21,9 +21,9 @@ def nature_cnn(observation_space, depths=(32, 64, 64), final_layer=512):
         nn.ReLU(),
         nn.Conv2d(depths[1], depths[2], kernel_size=3, stride=1),
         nn.ReLU(),
-        nn.Flatten())
+        nn.Flatten()
+    )
 
-    # Compute shape by doing one forward pass
     with torch.no_grad():
         n_flatten = cnn(torch.as_tensor(observation_space.sample()[None]).float()).shape[1]
 
@@ -66,14 +66,14 @@ class Network(nn.Module):
         with open(load_path, 'rb') as f:
             params_numpy = msgpack.loads(f.read())
 
-        params = {k: torch.as_tensor(v, device=self.device) for k,v in params_numpy.items()}
+        params = {k: torch.as_tensor(v, device=self.device) for k, v in params_numpy.items()}
 
         self.load_state_dict(params)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print('device:', device)
 
-make_env = lambda: make_atari_deepmind('Breakout-v0')
+make_env = lambda: make_atari_deepmind('ALE/Breakout-v5') #add, render_mode=human to gym.make
 
 vec_env = DummyVecEnv([make_env for _ in range(1)])
 
@@ -82,7 +82,7 @@ env = BatchedPytorchFrameStack(vec_env, k=4)
 net = Network(env, device)
 net = net.to(device)
 
-net.load('./atari_model.pack')
+net.load('./atari_breakout_network.pack')
 
 obs = env.reset()
 beginning_episode = True
@@ -98,7 +98,7 @@ for t in itertools.count():
         beginning_episode = False
 
     obs, rew, done, _ = env.step(action)
-    env.render()
+    #env.render()
     time.sleep(0.02)
 
     if done[0]:

@@ -1,22 +1,35 @@
+import os
 from torch import nn
 import torch
 from collections import deque
 import itertools
 import numpy as np
 import random
+from tqdm import tqdm
+
+from torch.utils.tensorboard import SummaryWriter
 
 from baselines_wrappers import DummyVecEnv, Monitor
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
+import msgpack
+from msgpack_numpy import patch as msgpack_numpy_patch
+msgpack_numpy_patch()
+
 GAMMA = 0.99
 BATCH_SIZE = 32
-BUFFER_SIZE = 50000
-MIN_REPLAY_SIZE = 1000
+BUFFER_SIZE = 1000000
+MIN_REPLAY_SIZE = 50000
 EPSILON_START = 1.0
-EPSILON_END = 0.02
-EPSILON_DECAY = 10000
-TARGET_UPDATE_FREQ = 1000
+EPSILON_END = 0.1
+EPSILON_DECAY = 1000000
 NUM_ENVS = 4
+TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
+LR = 5e-5
+SAVE_PATH = 'atari_breakout_network.pack'
+SAVE_INTERVAL = 10000
+LOG_DIR = 'logs/atari_breakout'
+LOG_INTERVAL = 1000
 
 
 def conv_net(observation_space, depths=(32, 64, 64), final_layer=512):
@@ -41,9 +54,9 @@ def conv_net(observation_space, depths=(32, 64, 64), final_layer=512):
 
 
 class Network(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env, device):
         super().__init__()
-
+        self.device = device
         self.num_actions = env.action_space.n
 
         conv_network = conv_net(env.observation_space)
@@ -57,7 +70,7 @@ class Network(nn.Module):
         return self.net(x)
 
     def act(self, observations, eps):
-        observations_tensor = torch.as_tensor(observations, dtype=torch.float32)
+        observations_tensor = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
         q_values = self(observations_tensor)
         max_q_indices = torch.argmax(q_values, dim=1)
         actions = max_q_indices.detach().tolist()
@@ -82,11 +95,11 @@ class Network(nn.Module):
             observations = np.asarray(observations)
             new_observations = np.asarray(new_observations)
 
-        observations_tensor = torch.as_tensor(observations, dtype=torch.float32)
-        actions_tensor = torch.as_tensor(actions, dtype=torch.int64).unsqueeze(-1)
-        rewards_tensor = torch.as_tensor(rewards, dtype=torch.float32).unsqueeze(-1)
-        finishes_tensor = torch.as_tensor(finishes, dtype=torch.float32).unsqueeze(-1)
-        new_observations_tensor = torch.as_tensor(new_observations, dtype=torch.float32)
+        observations_tensor = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
+        actions_tensor = torch.as_tensor(actions, dtype=torch.int64, device=self.device).unsqueeze(-1)
+        rewards_tensor = torch.as_tensor(rewards, dtype=torch.float32, device=self.device).unsqueeze(-1)
+        finishes_tensor = torch.as_tensor(finishes, dtype=torch.float32, device=self.device).unsqueeze(-1)
+        new_observations_tensor = torch.as_tensor(new_observations, dtype=torch.float32, device=self.device)
 
         # Compute Targets
         # targets = r + gamma * target q vals * (1 - dones)
@@ -103,10 +116,35 @@ class Network(nn.Module):
 
         return loss
 
+    def save_network(self, path):
+        params = {k: t.detach().cpu().numpy() for k, t in self.state_dict().items()}
+        params_data = msgpack.dumps(params)
 
-make_env = lambda: Monitor(make_atari_deepmind("ALE/Breakout-v5"), allow_early_resets=True)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as file:
+            file.write(params_data)
+
+    def load_network(self, path):
+        if not os.path.exists(path):
+            raise FileNotFoundError(path)
+
+        with open(path, 'rb') as file:
+            params_numpy = msgpack.loads(file.read())
+
+        params = {k: torch.as_tensor(v, device=self.device) for k, v in params_numpy.items()}
+
+        self.load_state_dict(params)
+
+
+make_env = lambda: Monitor(make_atari_deepmind("ALE/Breakout-v5", scale_values=True), allow_early_resets=True)
 vector_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
 # env = SubprocVecEnv([make_env for _ in range(NUM_ENVS)]])
+
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+if torch.cuda.is_available():
+    print("Using GPU")
+else:
+    print("Using CPU")
 
 env = BatchedPytorchFrameStack(vector_env, k=4)
 
@@ -115,12 +153,17 @@ episode_info_buffer = deque([], maxlen=100)
 
 episode_count = 0
 
-online_net = Network(env)
-target_net = Network(env)
+summary_writer = SummaryWriter(LOG_DIR)
+
+online_net = Network(env, device=device)
+target_net = Network(env, device=device)
+
+online_net = online_net.to(device)
+target_net = target_net.to(device)
 
 target_net.load_state_dict(online_net.state_dict())
 
-optimizer = torch.optim.Adam(online_net.parameters(), lr=5e-4)
+optimizer = torch.optim.Adam(online_net.parameters(), lr=LR)
 
 # Initialize replay buffer
 observations = env.reset()
@@ -138,7 +181,8 @@ for _ in range(MIN_REPLAY_SIZE):
 
 # Main Training Loop
 observations = env.reset()
-for iteration in itertools.count():
+iterations = 1500000
+for iteration in tqdm(range(iterations)):
     epsilon = np.interp(iteration * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
     if isinstance(observations[0], PytorchLazyFrames):
@@ -173,12 +217,22 @@ for iteration in itertools.count():
         target_net.load_state_dict(online_net.state_dict())
 
     # Logging
-    if iteration % 1000 == 0:
+    if iteration % LOG_INTERVAL == 0 and iteration != 0:
         reward_mean = np.mean([e['r'] for e in episode_info_buffer]) or 0
         length_mean = np.mean([e['l'] for e in episode_info_buffer]) or 0
 
-        print()
-        print('Step:', iteration)
-        print('Avg Rew:', reward_mean)
-        print('Avg Length:', length_mean)
-        print('Episodes:', episode_count)
+        # print()
+        # print('Step:', iteration)
+        # print('Avg Rew:', reward_mean)
+        # print('Avg Length:', length_mean)
+        # print('Episodes:', episode_count)
+
+        summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
+        summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
+        summary_writer.add_scalar("Episodes", episode_count, global_step=iteration)
+
+    # Saving
+
+    if iteration % SAVE_INTERVAL == 0 and iteration != 0:
+        online_net.save_network(SAVE_PATH)
+        # print("Model saved")
