@@ -10,7 +10,7 @@ from baselines_wrappers.wrappers import TimeLimit
 
 
 def make_atari_deepmind(env_id, max_episode_steps=None, scale_values=False, clip_rewards=True):
-    env = gym.make(env_id, render_mode='human')
+    env = gym.make(env_id)
     env = NoopResetEnv(env, noop_max=30)
 
     if 'NoFrameskip' in env.spec.id:

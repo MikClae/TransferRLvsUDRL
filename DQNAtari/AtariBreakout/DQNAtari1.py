@@ -12,12 +12,8 @@ from torch.utils.tensorboard import SummaryWriter
 from baselines_wrappers import DummyVecEnv, Monitor, SubprocVecEnv
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
-import msgpack
-from msgpack_numpy import patch as msgpack_numpy_patch
-msgpack_numpy_patch()
-
 GAMMA = 0.99
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 BUFFER_SIZE = 1000000
 MIN_REPLAY_SIZE = 50000
 EPSILON_START = 1.0
@@ -26,7 +22,7 @@ EPSILON_DECAY = 1000000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_breakout_network_run_four.pack'
+SAVE_PATH = './atari_breakout_network_run_six_batch64.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
@@ -168,7 +164,7 @@ for _ in range(MIN_REPLAY_SIZE):
 
 # Main Training Loop
 observations = env.reset()
-iterations = 3500090
+iterations = 1000090
 for iteration in tqdm(range(iterations)):
     epsilon = np.interp(iteration * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 

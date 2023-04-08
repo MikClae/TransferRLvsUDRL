@@ -74,7 +74,7 @@ env = BatchedPytorchFrameStack(vec_env, k=4)
 net = Network(env, device)
 net = net.to(device)
 
-net.load('./atari_breakout_network_run_four.pack')
+net.load_network('./atari_breakout_network_run_four.pack')
 
 obs = env.reset()
 beginning_episode = True
