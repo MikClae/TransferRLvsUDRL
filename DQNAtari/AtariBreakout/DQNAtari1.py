@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from torch.utils.tensorboard import SummaryWriter
 
-from baselines_wrappers import DummyVecEnv, Monitor
+from baselines_wrappers import DummyVecEnv, Monitor, SubprocVecEnv
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
 import msgpack
@@ -26,7 +26,7 @@ EPSILON_DECAY = 1000000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_breakout_network_run_two.pack'
+SAVE_PATH = './atari_breakout_network_run_four.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
@@ -117,28 +117,15 @@ class Network(nn.Module):
         return loss
 
     def save_network(self, path):
-        params = {k: t.detach().cpu().numpy() for k, t in self.state_dict().items()}
-        params_data = msgpack.dumps(params)
-
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'wb') as file:
-            file.write(params_data)
+        torch.save(self.state_dict(), path)
 
     def load_network(self, path):
-        if not os.path.exists(path):
-            raise FileNotFoundError(path)
-
-        with open(path, 'rb') as file:
-            params_numpy = msgpack.loads(file.read())
-
-        params = {k: torch.as_tensor(v, device=self.device) for k, v in params_numpy.items()}
-
-        self.load_state_dict(params)
+        self.load_state_dict(torch.load(path))
 
 
 make_env = lambda: Monitor(make_atari_deepmind("ALE/Breakout-v5", scale_values=True), allow_early_resets=True)
 vector_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
-# env = SubprocVecEnv([make_env for _ in range(NUM_ENVS)]])
+# vector_env = SubprocVecEnv([make_env for _ in range(NUM_ENVS)])
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 if torch.cuda.is_available():
@@ -181,7 +168,7 @@ for _ in range(MIN_REPLAY_SIZE):
 
 # Main Training Loop
 observations = env.reset()
-iterations = 1500000
+iterations = 3500090
 for iteration in tqdm(range(iterations)):
     epsilon = np.interp(iteration * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
@@ -222,9 +209,9 @@ for iteration in tqdm(range(iterations)):
         length_mean = np.mean([e['l'] for e in episode_info_buffer]) or 0
 
         # print()
-        # print('Step:', iteration)
-        # print('Avg Rew:', reward_mean)
-        # print('Avg Length:', length_mean)
+        print('Step:', iteration)
+        print('Avg Rew:', reward_mean)
+        print('Avg Length:', length_mean)
         # print('Episodes:', episode_count)
 
         summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)

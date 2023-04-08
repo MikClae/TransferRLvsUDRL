@@ -59,16 +59,8 @@ class Network(nn.Module):
 
         return actions
     
-    def load(self, load_path):
-        if not os.path.exists(load_path):
-            raise FileNotFoundError(load_path)
-
-        with open(load_path, 'rb') as f:
-            params_numpy = msgpack.loads(f.read())
-
-        params = {k: torch.as_tensor(v, device=self.device) for k, v in params_numpy.items()}
-
-        self.load_state_dict(params)
+    def load_network(self, path):
+        self.load_state_dict(torch.load(path))
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print('device:', device)
@@ -82,7 +74,7 @@ env = BatchedPytorchFrameStack(vec_env, k=4)
 net = Network(env, device)
 net = net.to(device)
 
-net.load('./atari_breakout_network.pack')
+net.load('./atari_breakout_network_run_four.pack')
 
 obs = env.reset()
 beginning_episode = True
