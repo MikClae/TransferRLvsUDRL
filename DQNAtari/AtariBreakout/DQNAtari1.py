@@ -17,7 +17,7 @@ BATCH_SIZE = 64
 BUFFER_SIZE = 1000000
 MIN_REPLAY_SIZE = 50000
 EPSILON_START = 1.0
-EPSILON_END = 0.1
+EPSILON_END = 0.05
 EPSILON_DECAY = 1000000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
@@ -164,7 +164,7 @@ for _ in range(MIN_REPLAY_SIZE):
 
 # Main Training Loop
 observations = env.reset()
-iterations = 1000090
+iterations = 1500090
 for iteration in tqdm(range(iterations)):
     epsilon = np.interp(iteration * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
