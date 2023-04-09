@@ -13,16 +13,16 @@ from baselines_wrappers import DummyVecEnv, Monitor, SubprocVecEnv
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
 GAMMA = 0.99
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 BUFFER_SIZE = 1000000
 MIN_REPLAY_SIZE = 50000
 EPSILON_START = 1.0
 EPSILON_END = 0.05
 EPSILON_DECAY = 1000000
 NUM_ENVS = 4
-TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
+TARGET_UPDATE_FREQ = 10000 // 8
 LR = 5e-5
-SAVE_PATH = './atari_breakout_network_run_six_batch64.pack'
+SAVE_PATH = './atari_breakout_network_run_eight_hightargetupdate.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
@@ -136,7 +136,7 @@ episode_info_buffer = deque([], maxlen=100)
 
 episode_count = 0
 
-summary_writer = SummaryWriter(LOG_DIR)
+# summary_writer = SummaryWriter(LOG_DIR)
 
 online_net = Network(env, device=device)
 target_net = Network(env, device=device)
@@ -210,9 +210,9 @@ for iteration in tqdm(range(iterations)):
         print('Avg Length:', length_mean)
         # print('Episodes:', episode_count)
 
-        summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
-        summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
-        summary_writer.add_scalar("Episodes", episode_count, global_step=iteration)
+        # summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
+        # summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
+        # summary_writer.add_scalar("Episodes", episode_count, global_step=iteration)
 
     # Saving
 
