@@ -20,9 +20,9 @@ EPSILON_START = 1.0
 EPSILON_END = 0.05
 EPSILON_DECAY = 1000000
 NUM_ENVS = 4
-TARGET_UPDATE_FREQ = 10000 // 8
+TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_breakout_network_run_eight_hightargetupdate.pack'
+SAVE_PATH = './atari_breakout_network_run_nine_punishdeath.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
@@ -136,7 +136,7 @@ episode_info_buffer = deque([], maxlen=100)
 
 episode_count = 0
 
-# summary_writer = SummaryWriter(LOG_DIR)
+summary_writer = SummaryWriter(LOG_DIR)
 
 online_net = Network(env, device=device)
 target_net = Network(env, device=device)
@@ -165,6 +165,7 @@ for _ in range(MIN_REPLAY_SIZE):
 # Main Training Loop
 observations = env.reset()
 iterations = 1500090
+lives = np.zeros(NUM_ENVS)
 for iteration in tqdm(range(iterations)):
     epsilon = np.interp(iteration * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
@@ -175,6 +176,11 @@ for iteration in tqdm(range(iterations)):
         actions = online_net.act(observations, epsilon)
 
     new_observations, rewards, finishes, infos = env.step(actions)
+    if iteration > 0:
+        for info in range(len(infos)):
+            if infos[info]['lives'] == lives[info] - 1:
+                rewards[info] = -1
+            lives[info] = infos[info]['lives']
 
     for observation, action, reward, finish, new_observation, info in zip(observations, actions, rewards, finishes,
                                                                           new_observations, infos):
@@ -210,12 +216,12 @@ for iteration in tqdm(range(iterations)):
         print('Avg Length:', length_mean)
         # print('Episodes:', episode_count)
 
-        # summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
-        # summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
-        # summary_writer.add_scalar("Episodes", episode_count, global_step=iteration)
+        summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
+        summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
+        summary_writer.add_scalar("Episodes", episode_count, global_step=iteration)
 
     # Saving
 
     if iteration % SAVE_INTERVAL == 0 and iteration != 0:
         online_net.save_network(SAVE_PATH)
-        # print("Model saved")
+        print("Model saved")
