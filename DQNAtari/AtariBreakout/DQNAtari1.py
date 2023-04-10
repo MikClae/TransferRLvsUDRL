@@ -22,7 +22,7 @@ EPSILON_DECAY = 1000000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_breakout_network_run_nine_punishdeath.pack'
+SAVE_PATH = './atari_breakout_network_run_ten_mseloss.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
@@ -108,7 +108,7 @@ class Network(nn.Module):
         q_values = online_net(observations_tensor)
         action_q_values = torch.gather(input=q_values, dim=1, index=actions_tensor)
 
-        loss = nn.functional.smooth_l1_loss(action_q_values, targets)
+        loss = nn.functional.mse_loss(action_q_values, targets)
 
         return loss
 
