@@ -65,7 +65,7 @@ class Network(nn.Module):
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print('device:', device)
 
-make_env = lambda: make_atari_deepmind('ALE/Breakout-v5') #add, render_mode=human to gym.make
+make_env = lambda: make_atari_deepmind('ALE/Pong-v5', scale_values=True) #add, render_mode=human to gym.make
 
 vec_env = DummyVecEnv([make_env for _ in range(1)])
 
@@ -74,7 +74,7 @@ env = BatchedPytorchFrameStack(vec_env, k=4)
 net = Network(env, device)
 net = net.to(device)
 
-net.load_network('./atari_breakout_network_run_nine_punishdeath.pack')
+net.load_network('./atari_pong_network_run_1.pack')
 
 obs = env.reset()
 beginning_episode = True

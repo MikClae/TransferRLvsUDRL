@@ -13,18 +13,18 @@ from baselines_wrappers import DummyVecEnv, Monitor, SubprocVecEnv
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
 GAMMA = 0.99
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 BUFFER_SIZE = 1000000
 MIN_REPLAY_SIZE = 50000
 EPSILON_START = 1.0
 EPSILON_END = 0.05
-EPSILON_DECAY = 1000000
+EPSILON_DECAY = 1300000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_breakout_network_run_ten_mseloss.pack'
+SAVE_PATH = './atari_pong_network_run_4_4actions.pack'
 SAVE_INTERVAL = 10000
-LOG_DIR = 'logs/atari_breakout'
+LOG_DIR = 'logs/atari_pong'
 LOG_INTERVAL = 1000
 
 
@@ -119,7 +119,7 @@ class Network(nn.Module):
         self.load_state_dict(torch.load(path))
 
 
-make_env = lambda: Monitor(make_atari_deepmind("ALE/Breakout-v5", scale_values=True), allow_early_resets=True)
+make_env = lambda: Monitor(make_atari_deepmind("ALE/Pong-v5", scale_values=True), allow_early_resets=True)
 vector_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
 # vector_env = SubprocVecEnv([make_env for _ in range(NUM_ENVS)])
 
@@ -130,6 +130,7 @@ else:
     print("Using CPU")
 
 env = BatchedPytorchFrameStack(vector_env, k=4)
+env.action_space.n = 4
 
 replay_buffer = deque(maxlen=BUFFER_SIZE)
 episode_info_buffer = deque([], maxlen=100)
@@ -143,6 +144,8 @@ target_net = Network(env, device=device)
 
 online_net = online_net.to(device)
 target_net = target_net.to(device)
+
+#online_net.load_network('./atari_breakout_network_run_ten_mseloss.pack')
 
 target_net.load_state_dict(online_net.state_dict())
 
@@ -164,10 +167,10 @@ for _ in range(MIN_REPLAY_SIZE):
 
 # Main Training Loop
 observations = env.reset()
-iterations = 1500090
+iterations = 1500000
 lives = np.zeros(NUM_ENVS)
 for iteration in tqdm(range(iterations)):
-    epsilon = np.interp(iteration * NUM_ENVS, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
+    epsilon = np.interp(iteration, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
     if isinstance(observations[0], PytorchLazyFrames):
         observations_ = np.stack([obs.get_frames() for obs in observations])
@@ -176,11 +179,12 @@ for iteration in tqdm(range(iterations)):
         actions = online_net.act(observations, epsilon)
 
     new_observations, rewards, finishes, infos = env.step(actions)
-    if iteration > 0:
-        for info in range(len(infos)):
-            if infos[info]['lives'] == lives[info] - 1:
-                rewards[info] = -1
-            lives[info] = infos[info]['lives']
+    for info in range(len(infos)):
+        if infos[info]['lives'] == lives[info] - 1:
+            rewards[info] = -1
+        lives[info] = infos[info]['lives']
+        # if rewards[info] == 0:
+        #     rewards[info] = -0.01
 
     for observation, action, reward, finish, new_observation, info in zip(observations, actions, rewards, finishes,
                                                                           new_observations, infos):
@@ -211,14 +215,13 @@ for iteration in tqdm(range(iterations)):
         length_mean = np.mean([e['l'] for e in episode_info_buffer]) or 0
 
         # print()
-        print('Step:', iteration)
+        print(' Step:', iteration)
         print('Avg Rew:', reward_mean)
         print('Avg Length:', length_mean)
-        # print('Episodes:', episode_count)
+        print('Epsilon:', epsilon)
 
         summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
         summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
-        summary_writer.add_scalar("Episodes", episode_count, global_step=iteration)
 
     # Saving
 
