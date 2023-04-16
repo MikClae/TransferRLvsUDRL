@@ -13,7 +13,7 @@ from baselines_wrappers import DummyVecEnv, Monitor, SubprocVecEnv
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
 GAMMA = 0.99
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 BUFFER_SIZE = 1000000
 MIN_REPLAY_SIZE = 50000
 EPSILON_START = 1.0
@@ -22,7 +22,7 @@ EPSILON_DECAY = 1300000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_pong_network_run_4_4actions.pack'
+SAVE_PATH = './atari_pong_network_run_6_load12_lr1em4.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_pong'
 LOG_INTERVAL = 1000
@@ -145,7 +145,8 @@ target_net = Network(env, device=device)
 online_net = online_net.to(device)
 target_net = target_net.to(device)
 
-#online_net.load_network('./atari_breakout_network_run_ten_mseloss.pack')
+online_net.load_network('./atari_breakout_network_run_12_10long.pack')
+target_net.load_network('./atari_breakout_network_run_12_10long.pack')
 
 target_net.load_state_dict(online_net.state_dict())
 
