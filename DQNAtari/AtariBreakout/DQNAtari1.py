@@ -1,4 +1,3 @@
-import os
 from torch import nn
 import torch
 from collections import deque
@@ -22,31 +21,17 @@ EPSILON_DECAY = 1300000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_pong_network_run_6_load12_lr1em4.pack'
+SAVE_PATH = './atari_breakout_new_network_run_1.pack'
 SAVE_INTERVAL = 10000
-LOG_DIR = 'logs/atari_pong'
+LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
 
 
-def conv_net(observation_space, depths=(32, 64, 64), final_layer=512):
-    n_input_channels = observation_space.shape[0]
-
-    cnn = nn.Sequential(
-        nn.Conv2d(n_input_channels, depths[0], kernel_size=8, stride=4),
-        nn.ReLU(),
-        nn.Conv2d(depths[0], depths[1], kernel_size=4, stride=2),
-        nn.ReLU(),
-        nn.Conv2d(depths[1], depths[2], kernel_size=3, stride=1),
-        nn.ReLU(),
-        nn.Flatten()
-    )
-
+def compute_shape(net, env):
     with torch.no_grad():
-        n_flatten = cnn(torch.as_tensor(observation_space.sample()[None]).float()).shape[1]
+        n_shape = net(torch.as_tensor(env.observation_space.sample()[None]).float()).shape[1]
 
-    out = nn.Sequential(cnn, nn.Linear(n_flatten, final_layer), nn.ReLU())
-
-    return out
+    return n_shape
 
 
 class Network(nn.Module):
@@ -55,19 +40,39 @@ class Network(nn.Module):
         self.device = device
         self.num_actions = env.action_space.n
 
-        conv_network = conv_net(env.observation_space)
+        depths = (32, 64, 64)
+        n_input_channels = env.observation_space.shape[0]
+        final_layer = 512
 
-        self.net = nn.Sequential(
-            conv_network,
-            nn.Linear(512, self.num_actions)
-        )
+        self.fc1 = nn.Conv2d(n_input_channels, depths[0], kernel_size=8, stride=4)
+        self.fc2 = nn.ReLU()
+        self.fc3 = nn.Conv2d(depths[0], depths[1], kernel_size=4, stride=2)
+        self.fc4 = nn.ReLU()
+        self.fc5 = nn.Conv2d(depths[1], depths[2], kernel_size=3, stride=1)
+        self.fc6 = nn.ReLU()
+        self.fc7 = nn.Flatten()
+
+        shape = compute_shape(nn.Sequential(self.fc1, self.fc2, self.fc3, self.fc4, self.fc5, self.fc6, self.fc7), env)
+
+        self.fc8 = nn.Linear(shape, final_layer)
+        self.fc9 = nn.ReLU()
+        self.fc10 = nn.Linear(final_layer, self.num_actions)
 
     def forward(self, x):
-        return self.net(x)
+        out = self.fc1(x)
+        out = self.fc2(out)
+        out = self.fc3(out)
+        out = self.fc4(out)
+        out = self.fc5(out)
+        out = self.fc6(out)
+        out = self.fc7(out)
+        out = self.fc8(out)
+        out = self.fc9(out)
+        return self.fc10(out)
 
     def act(self, observations, eps):
         observations_tensor = torch.as_tensor(observations, dtype=torch.float32, device=self.device)
-        q_values = self(observations_tensor)
+        q_values = self.forward(observations_tensor)
         max_q_indices = torch.argmax(q_values, dim=1)
         actions = max_q_indices.detach().tolist()
 
@@ -118,6 +123,22 @@ class Network(nn.Module):
     def load_network(self, path):
         self.load_state_dict(torch.load(path))
 
+    def load_part(self, path):
+        state_dict_ = torch.load(path)
+        with torch.no_grad():
+            self.fc5.weight.copy_(state_dict_['fc5.weight'])
+            self.fc5.bias.copy_(state_dict_['fc5.bias'])
+#            self.fc6.weight.copy_(state_dict_['fc6.weight'])
+#            self.fc6.bias.copy_(state_dict_['fc6.bias'])
+#             self.fc7.weight.copy_(state_dict_['fc7.weight'])
+#             self.fc7.bias.copy_(state_dict_['fc7.bias'])
+            self.fc8.weight.copy_(state_dict_['fc8.weight'])
+            self.fc8.bias.copy_(state_dict_['fc8.bias'])
+#            self.fc9.weight.copy_(state_dict_['fc9.weight'])
+#            self.fc9.bias.copy_(state_dict_['fc9.bias'])
+            self.fc10.weight.copy_(state_dict_['fc10.weight'])
+            self.fc10.bias.copy_(state_dict_['fc10.bias'])
+
 
 make_env = lambda: Monitor(make_atari_deepmind("ALE/Pong-v5", scale_values=True), allow_early_resets=True)
 vector_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
@@ -145,8 +166,7 @@ target_net = Network(env, device=device)
 online_net = online_net.to(device)
 target_net = target_net.to(device)
 
-online_net.load_network('./atari_breakout_network_run_12_10long.pack')
-target_net.load_network('./atari_breakout_network_run_12_10long.pack')
+# online_net.load_part('./atari_pong_new_network_run_1.pack')
 
 target_net.load_state_dict(online_net.state_dict())
 
@@ -184,8 +204,6 @@ for iteration in tqdm(range(iterations)):
         if infos[info]['lives'] == lives[info] - 1:
             rewards[info] = -1
         lives[info] = infos[info]['lives']
-        # if rewards[info] == 0:
-        #     rewards[info] = -0.01
 
     for observation, action, reward, finish, new_observation, info in zip(observations, actions, rewards, finishes,
                                                                           new_observations, infos):
