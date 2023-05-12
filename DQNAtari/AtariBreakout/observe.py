@@ -11,25 +11,12 @@ import msgpack
 from msgpack_numpy import patch as msgpack_numpy_patch
 msgpack_numpy_patch()
 
-def nature_cnn(observation_space, depths=(32, 64, 64), final_layer=512):
-    n_input_channels = observation_space.shape[0]
 
-    cnn = nn.Sequential(
-        nn.Conv2d(n_input_channels, depths[0], kernel_size=8, stride=4),
-        nn.ReLU(),
-        nn.Conv2d(depths[0], depths[1], kernel_size=4, stride=2),
-        nn.ReLU(),
-        nn.Conv2d(depths[1], depths[2], kernel_size=3, stride=1),
-        nn.ReLU(),
-        nn.Flatten()
-    )
-
+def compute_shape(net, env):
     with torch.no_grad():
-        n_flatten = cnn(torch.as_tensor(observation_space.sample()[None]).float()).shape[1]
+        n_shape = net(torch.as_tensor(env.observation_space.sample()[None]).float()).shape[1]
 
-    out = nn.Sequential(cnn, nn.Linear(n_flatten, final_layer), nn.ReLU())
-
-    return out
+    return n_shape
 
 class Network(nn.Module):
     def __init__(self, env, device):
@@ -38,12 +25,39 @@ class Network(nn.Module):
         self.num_actions = env.action_space.n
         self.device = device
 
-        conv_net = nature_cnn(env.observation_space)
+        super().__init__()
+        self.device = device
+        self.num_actions = env.action_space.n
 
-        self.net = nn.Sequential(conv_net, nn.Linear(512, self.num_actions))
+        depths = (32, 64, 64)
+        n_input_channels = env.observation_space.shape[0]
+        final_layer = 512
+
+        self.fc1 = nn.Conv2d(n_input_channels, depths[0], kernel_size=8, stride=4)
+        self.fc2 = nn.ReLU()
+        self.fc3 = nn.Conv2d(depths[0], depths[1], kernel_size=4, stride=2)
+        self.fc4 = nn.ReLU()
+        self.fc5 = nn.Conv2d(depths[1], depths[2], kernel_size=3, stride=1)
+        self.fc6 = nn.ReLU()
+        self.fc7 = nn.Flatten()
+
+        shape = compute_shape(nn.Sequential(self.fc1, self.fc2, self.fc3, self.fc4, self.fc5, self.fc6, self.fc7), env)
+
+        self.fc8 = nn.Linear(shape, final_layer)
+        self.fc9 = nn.ReLU()
+        self.fc10 = nn.Linear(final_layer, self.num_actions)
 
     def forward(self, x):
-        return self.net(x)
+        out = self.fc1(x)
+        out = self.fc2(out)
+        out = self.fc3(out)
+        out = self.fc4(out)
+        out = self.fc5(out)
+        out = self.fc6(out)
+        out = self.fc7(out)
+        out = self.fc8(out)
+        out = self.fc9(out)
+        return self.fc10(out)
 
     def act(self, obses, epsilon):
         obses_t = torch.as_tensor(obses, dtype=torch.float32, device=self.device)
@@ -65,16 +79,17 @@ class Network(nn.Module):
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print('device:', device)
 
-make_env = lambda: make_atari_deepmind('ALE/Pong-v5', scale_values=True) #add, render_mode=human to gym.make
+make_env = lambda: make_atari_deepmind('ALE/Breakout-v5', scale_values=True) #add, render_mode=human to gym.make
 
 vec_env = DummyVecEnv([make_env for _ in range(1)])
 
 env = BatchedPytorchFrameStack(vec_env, k=4)
+env.action_space.n = 4
 
 net = Network(env, device)
 net = net.to(device)
 
-net.load_network('./atari_pong_network_run_1.pack')
+net.load_network('./atari_breakout_new_network_run_1_normal.pack')
 
 obs = env.reset()
 beginning_episode = True
