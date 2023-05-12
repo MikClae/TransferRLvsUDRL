@@ -1,7 +1,6 @@
 from torch import nn
 import torch
 from collections import deque
-import itertools
 import numpy as np
 import random
 from tqdm import tqdm
@@ -12,16 +11,16 @@ from baselines_wrappers import DummyVecEnv, Monitor, SubprocVecEnv
 from pytorch_wrappers import make_atari_deepmind, BatchedPytorchFrameStack, PytorchLazyFrames
 
 GAMMA = 0.99
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 BUFFER_SIZE = 1000000
 MIN_REPLAY_SIZE = 50000
-EPSILON_START = 1.0
+EPSILON_START = 1
 EPSILON_END = 0.05
 EPSILON_DECAY = 1300000
 NUM_ENVS = 4
 TARGET_UPDATE_FREQ = 10000 // NUM_ENVS
 LR = 5e-5
-SAVE_PATH = './atari_breakout_new_network_run_1.pack'
+SAVE_PATH = './atari_breakout_new_network_run_1_normal.pack'
 SAVE_INTERVAL = 10000
 LOG_DIR = 'logs/atari_breakout'
 LOG_INTERVAL = 1000
@@ -126,21 +125,21 @@ class Network(nn.Module):
     def load_part(self, path):
         state_dict_ = torch.load(path)
         with torch.no_grad():
-            self.fc5.weight.copy_(state_dict_['fc5.weight'])
-            self.fc5.bias.copy_(state_dict_['fc5.bias'])
-#            self.fc6.weight.copy_(state_dict_['fc6.weight'])
-#            self.fc6.bias.copy_(state_dict_['fc6.bias'])
-#             self.fc7.weight.copy_(state_dict_['fc7.weight'])
-#             self.fc7.bias.copy_(state_dict_['fc7.bias'])
-            self.fc8.weight.copy_(state_dict_['fc8.weight'])
-            self.fc8.bias.copy_(state_dict_['fc8.bias'])
-#            self.fc9.weight.copy_(state_dict_['fc9.weight'])
-#            self.fc9.bias.copy_(state_dict_['fc9.bias'])
-            self.fc10.weight.copy_(state_dict_['fc10.weight'])
-            self.fc10.bias.copy_(state_dict_['fc10.bias'])
+            self.fc1.weight.copy_(state_dict_['fc1.weight'])
+            self.fc1.bias.copy_(state_dict_['fc1.bias'])
+            self.fc3.weight.copy_(state_dict_['fc3.weight'])
+            self.fc3.bias.copy_(state_dict_['fc3.bias'])
+            # self.fc5.weight.copy_(state_dict_['fc5.weight'])
+            # self.fc5.bias.copy_(state_dict_['fc5.bias'])
+            # for param in self.fc1.parameters():
+            #     param.requires_grad = False
+            # for param in self.fc3.parameters():
+            #     param.requires_grad = False
+            # for param in self.fc5.parameters():
+            #     param.requires_grad = False
 
 
-make_env = lambda: Monitor(make_atari_deepmind("ALE/Pong-v5", scale_values=True), allow_early_resets=True)
+make_env = lambda: Monitor(make_atari_deepmind("ALE/Breakout-v5", scale_values=True), allow_early_resets=True)
 vector_env = DummyVecEnv([make_env for _ in range(NUM_ENVS)])
 # vector_env = SubprocVecEnv([make_env for _ in range(NUM_ENVS)])
 
@@ -172,24 +171,25 @@ target_net.load_state_dict(online_net.state_dict())
 
 optimizer = torch.optim.Adam(online_net.parameters(), lr=LR)
 
-# Initialize replay buffer
-observations = env.reset()
-for _ in range(MIN_REPLAY_SIZE):
-    actions = [env.action_space.sample() for i in range(NUM_ENVS)]
-
-    new_observations, rewards, finishes, _ = env.step(actions)
-
-    for observation, action, reward, finish, new_observation in zip(observations, actions, rewards, finishes,
-                                                                    new_observations):
-        transition = (observation, action, reward, finish, new_observation)
-        replay_buffer.append(transition)
-
-    observations = new_observations
+# # Initialize replay buffer
+# observations = env.reset()
+# for _ in range(MIN_REPLAY_SIZE):
+#     actions = [env.action_space.sample() for i in range(NUM_ENVS)]
+#
+#     new_observations, rewards, finishes, _ = env.step(actions)
+#
+#     for observation, action, reward, finish, new_observation in zip(observations, actions, rewards, finishes,
+#                                                                     new_observations):
+#         transition = (observation, action, reward, finish, new_observation)
+#         replay_buffer.append(transition)
+#
+#     observations = new_observations
 
 # Main Training Loop
 observations = env.reset()
 iterations = 1500000
 lives = np.zeros(NUM_ENVS)
+losses = np.zeros(LOG_INTERVAL)
 for iteration in tqdm(range(iterations)):
     epsilon = np.interp(iteration, [0, EPSILON_DECAY], [EPSILON_START, EPSILON_END])
 
@@ -216,8 +216,9 @@ for iteration in tqdm(range(iterations)):
 
     observations = new_observations
 
-    transitions = random.sample(replay_buffer, BATCH_SIZE)
+    transitions = random.sample(replay_buffer, min(BATCH_SIZE, len(replay_buffer)))
     loss = online_net.calculate_loss(transitions, target_net)
+    losses[iteration % LOG_INTERVAL] = loss.item()
 
     # Gradient Descent
     optimizer.zero_grad()
@@ -232,8 +233,8 @@ for iteration in tqdm(range(iterations)):
     if iteration % LOG_INTERVAL == 0 and iteration != 0:
         reward_mean = np.mean([e['r'] for e in episode_info_buffer]) or 0
         length_mean = np.mean([e['l'] for e in episode_info_buffer]) or 0
+        loss_mean = np.mean(losses) or 0
 
-        # print()
         print(' Step:', iteration)
         print('Avg Rew:', reward_mean)
         print('Avg Length:', length_mean)
@@ -241,6 +242,7 @@ for iteration in tqdm(range(iterations)):
 
         summary_writer.add_scalar("Avg Reward", reward_mean, global_step=iteration)
         summary_writer.add_scalar("Avg Length", length_mean, global_step=iteration)
+        summary_writer.add_scalar("Avg Loss", loss_mean, global_step=iteration)
 
     # Saving
 
