@@ -30,8 +30,8 @@ class NoopResetEnv(gym.Wrapper):
         assert noops > 0
         obs = None
         for _ in range(noops):
-            obs, _, done, _ = self.env.step(self.noop_action)
-            if done:
+            obs, _, done, done1, _ = self.env.step(self.noop_action)
+            if done or done1:
                 obs = self.env.reset(**kwargs)
         return obs
 
@@ -68,8 +68,9 @@ class EpisodicLifeEnv(gym.Wrapper):
         self.was_real_done  = True
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        self.was_real_done = done
+        obs, reward, done, done1, info = self.env.step(action)
+        done2 = (done or done1)
+        self.was_real_done = done2
         # check current lives, make loss of life terminal,
         # then update lives to handle bonus lives
         lives = self.env.unwrapped.ale.lives()
@@ -90,7 +91,7 @@ class EpisodicLifeEnv(gym.Wrapper):
             obs = self.env.reset(**kwargs)
         else:
             # no-op step to advance from terminal/lost life state
-            obs, _, _, _ = self.env.step(0)
+            obs, _, _, _, _ = self.env.step(0)
         self.lives = self.env.unwrapped.ale.lives()
         return obs
 
