@@ -1,4 +1,0 @@
-Requirement already satisfied: gym in c:\users\mikcl\appdata\local\programs\python\python310\lib\site-packages (0.26.2)
-Requirement already satisfied: numpy>=1.18.0 in c:\users\mikcl\appdata\local\programs\python\python310\lib\site-packages (from gym) (1.23.5)
-Requirement already satisfied: gym-notices>=0.0.4 in c:\users\mikcl\appdata\local\programs\python\python310\lib\site-packages (from gym) (0.0.8)
-Requirement already satisfied: cloudpickle>=1.2.0 in c:\users\mikcl\appdata\local\programs\python\python310\lib\site-packages (from gym) (2.2.1)
